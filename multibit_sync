@@ -1,0 +1,70 @@
+module multibit_sync(
+	input 			clk0  ,
+	input			vld	  ,
+	input 			rstn0 ,
+	input 			clk1  ,
+	input 			rstn1 ,
+	input  [31:0]	data  ,
+	output 			vld_o ,
+	output [31:0]	dout
+);
+
+reg [2:0] 	vld_sync;
+reg [63:0]	r_data;
+
+//----1:clk0 signals
+reg 		r_vld;
+
+always@(posedge clk0 or negedge rstn0)
+if(!rstn0)
+	r_vld <= 0;
+else if(vld)
+	r_vld <= ~r_vld;
+
+always@(posedge clk0 or negedge rstn0)
+if(!rstn0)
+	r_data <= 'd0;
+else if(vld)
+	r_data <= {r_data[31:0],data};
+
+//-----2 clk1 signal 
+reg 		cap;
+reg	[63:0]  r_data_d;		//note:block valid data
+reg			vld_d;
+reg [1:0]	o_cnt;
+
+
+always@(posedge clk1 or negedge rstn1)
+if(~rstn1)begin
+	vld_sync <= 'd0;
+end
+else begin
+	vld_sync <= {vld_sync[1:0],r_vld};
+end
+
+always@(posedge clk1 or negedge rstn1)
+if(~rstn1)
+	cap <= 'd0;
+else 
+	cap <= vld_sync[2] ^ vld_sync[1];
+
+always@(posedge clk1 or negedge rstn1)
+if(!rstn1)
+	r_data_d <= 'd0;
+else if(cap)
+	r_data_d <= r_data;
+else if(vld_o && o_cnt == 'd2)
+	r_data_d <= {r_data_d[0 +: 32],32'h0};
+
+always@(posedge clk1 or negedge rstn1)
+if(!rstn1)
+	o_cnt <= 0;
+else if(cap)
+	o_cnt <= 'd2;
+else if(vld_o)
+	o_cnt <= o_cnt - 1;
+
+assign dout = r_data_d[32 +: 32];
+assign vld_o = (o_cnt != 'd0) ? 'd1 : 'd0;
+
+endmodule
